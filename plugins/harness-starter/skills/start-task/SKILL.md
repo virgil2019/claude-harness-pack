@@ -1,6 +1,6 @@
 ---
 name: start-task
-description: Bootstraps a non-trivial coding task by creating a git worktree on a new branch, producing a plan + done criteria, and writing them to .task.md in the worktree. Invoke when the user says "开始任务", "新任务", "start a task", or when starting any non-trivial code change that should go through the worktree + PR workflow. Requires being inside a git repository. Do not invoke for trivial fixes (single-line typo, format) or read-only exploration.
+description: Bootstraps a non-trivial coding task by creating a git worktree on a new branch, producing a plan + done criteria, and writing them to .task.md in the worktree. Invoke when the user says "开始任务", "新任务", "start a task", or when starting any non-trivial code change that should go through the worktree + PR workflow. If the current dir is not a git repo or has no origin remote, delegates to init-repo first. Do not invoke for trivial fixes (single-line typo, format) or read-only exploration.
 ---
 
 # start-task
@@ -21,10 +21,27 @@ If any is unclear, ask before proceeding.
 
 ## Pre-flight
 
-```bash
-# Must be inside a repo
-git rev-parse --is-inside-work-tree
+### 0. Bootstrap check — delegate to `init-repo` if needed
 
+Before anything else, verify the current dir is a ready-to-work repo:
+
+```bash
+IS_REPO=$(git rev-parse --is-inside-work-tree 2>/dev/null && echo yes || echo no)
+HAS_ORIGIN=$(git remote 2>/dev/null | grep -qx origin && echo yes || echo no)
+```
+
+If either is `no`:
+
+- Tell user: **"当前目录不是 git repo (或没有 origin)。先 init-repo 把它配好再继续。"**
+- **Invoke the `init-repo` skill** to interactively bootstrap
+- After `init-repo` completes, resume this skill's flow from step 1 below
+- If user declines, abort start-task
+
+If both are `yes`, proceed.
+
+### 1. Repo info
+
+```bash
 # Determine base branch (usually main or master)
 BASE_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 # If the above fails (no origin HEAD set), fall back:
@@ -123,8 +140,8 @@ echo ".task.md" >> .git/info/exclude
 
 ## Error handling
 
-- No git repo: abort with clear message, suggest `git init` or `cd` to a repo
-- No origin / no base branch detected: ask user for base branch name
+- No git repo / no origin → **delegate to `init-repo`** (see Pre-flight step 0)
+- No base branch detected even after init-repo: ask user for base branch name
 - Dirty working tree: ask "proceed anyway? (worktree forks from origin, not your dirty state)"
 - Worktree path exists: auto-append `-2`, `-3`, ... up to 9; beyond that, ask user
 - Branch name collision: append `-2` etc; or ask
