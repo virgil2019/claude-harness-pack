@@ -1,0 +1,8 @@
+{
+  "name": "harness-starter",
+  "version": "0.1.0",
+  "description": "Bootstraps a Claude Code user environment and provides worktree+PR task workflow plus an evolution-loop (feedback/checkpoint/retrospect) on top of it.",
+  "author": {
+    "name": "George Huang"
+  }
+}
