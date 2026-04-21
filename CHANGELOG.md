@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.0] — 2026-04-21
+
+### Added
+- **`finish-task` step 11**: after opening the PR, offers to clean up local worktree + branch. Only applies to task branches (`feat/*` / `fix/*` / `refactor/*` / `chore/*` / `docs/*` / `perf/*` / `test/*`); **never offers cleanup for protected branches** (`main` / `master` / `dev` / `develop` / `release/*` / `hotfix/*`). User must explicitly confirm. Remote branch + PR stay on GitHub.
+
+### Changed
+- **`finish-task` GH_TOKEN enforcement hardened**: description, step 6, and Do-NOT list now explicitly forbid `gh auth switch` and `export GH_TOKEN`. Every `gh` call MUST be prefixed `GH_TOKEN="$TOKEN" gh ...` inline. Prevents race conditions when multiple worktrees invoke finish-task simultaneously.
+
 ## [0.3.0] — 2026-04-21
 
 ### Changed

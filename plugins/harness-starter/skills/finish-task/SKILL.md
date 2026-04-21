@@ -1,6 +1,6 @@
 ---
 name: finish-task
-description: Wraps up a task in a git worktree. Scope-checks the diff against the plan, walks through done criteria, ensures clean commits, selects the right GitHub account (by SSH alias → gh username mapping in ~/.claude/gh-accounts.yml), pushes the branch, and opens a PR via gh. Invoke when user says "完成任务", "准备合入", "open PR", "finish task", or similar. Assumes the worktree was created by start-task and contains .task.md. Does NOT auto-merge.
+description: Wraps up a task in a git worktree. Scope-checks the diff against the plan, walks through done criteria, ensures clean commits, selects the right GitHub account (by SSH alias → gh username mapping in ~/.claude/gh-accounts.yml), pushes the branch, and opens a PR via gh. Uses per-command `GH_TOKEN=$(gh auth token -u X) gh ...` for account selection; **MUST NOT** use `gh auth switch` (stateless by design, race-safe for parallel worktrees). After PR is opened, offers optional retrospective and local cleanup (worktree + branch deletion, never on main / master / dev / develop). Invoke when user says "完成任务", "准备合入", "open PR", "finish task", or similar. Assumes the worktree was created by start-task and contains .task.md. Does NOT auto-merge.
 ---
 
 # finish-task
@@ -88,14 +88,23 @@ USERNAME=$(grep -E "^${ALIAS}:" ~/.claude/gh-accounts.yml 2>/dev/null | sed 's/^
   - Instruct user: `gh auth login --hostname github.com --git-protocol ssh --web` (then select right account)
   - Halt
 
-### 6. Get the token for this account (stateless, no active-account change)
+### 6. Get the token for this account (⚠️ MUST use GH_TOKEN, NEVER `gh auth switch`)
 
 ```bash
 TOKEN=$(gh auth token -u "$USERNAME" 2>/dev/null)
 [ -n "$TOKEN" ] || { echo "gh is not authed for $USERNAME. Run: gh auth login"; exit 1; }
 ```
 
-**Why GH_TOKEN (not `gh auth switch`)**: the token is scoped to the command it's passed to, so we don't touch the globally active gh account. This is **race-safe for parallel worktrees** — two simultaneous finish-tasks on different repos won't clobber each other's account selection.
+**🚫 FORBIDDEN in this skill**:
+- `gh auth switch ...` (modifies globally active account → races with parallel worktrees)
+- `export GH_TOKEN=...` (leaks token to later commands / subshells)
+
+**✅ REQUIRED pattern for every gh call**:
+```bash
+GH_TOKEN="$TOKEN" gh <subcommand> ...
+```
+
+Token is scoped to a single command. Stateless. Race-safe across parallel worktrees. Do not deviate from this pattern — if the user (or another skill invocation) is simultaneously using gh elsewhere, `gh auth switch` will clobber their active account.
 
 ### 7. Push branch
 
@@ -141,9 +150,74 @@ Note: prefix with `GH_TOKEN="$TOKEN"` **only for this command**. Do not `export`
 After reporting, ask:
 > "要跑 retrospect-task 做个复盘吗? 把这次任务里的纠正 / 摩擦 / 可复用模式 固化下来."
 
-- If yes → invoke `retrospect-task` skill
-- If no → finish. User can always invoke later.
+- If yes → invoke `retrospect-task` skill (needs `.task.md`, so must run BEFORE cleanup in step 11)
+- If no → proceed to step 11.
 - Skip asking if `checkpoint` was run recently (last 10 turns) and covered most of the task.
+
+### 11. Offer local cleanup (worktree + branch)
+
+**Safety filter (protected branches)**: determine current branch and skip this step entirely if it matches any protected pattern:
+
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+case "$BRANCH" in
+  main|master|dev|develop|main/*|master/*|dev/*|develop/*|release/*|hotfix/*)
+    # Never offer to delete these — skip step 11 silently
+    echo "Protected branch ($BRANCH): skipping cleanup offer."
+    exit 0 ;;  # or just `return`, depending on skill runtime
+esac
+```
+
+Only proceed if branch looks like a task branch (e.g., `feat/*`, `fix/*`, `refactor/*`, `chore/*`, `docs/*`, `perf/*`, `test/*`).
+
+**Ask the user**:
+> "PR 已开。要顺手清理本地吗？会删除 worktree `.worktrees/<slug>/` 和本地分支 `${BRANCH}`。（远程分支和 PR 依然在 GitHub 上，merge 后再 fetch 就行。）"
+
+Options:
+- **Yes** — perform cleanup now
+- **No** — keep local state; remind user to do manual cleanup after merge
+
+**If user says yes**:
+
+```bash
+# 1. Find the main repo path (can't remove worktree while inside it)
+MAIN_REPO=$(git worktree list | head -1 | awk '{print $1}')
+
+# 2. Find this worktree's path by branch name
+WORKTREE_PATH=$(git worktree list | awk -v b="[${BRANCH}]" '$3 == b {print $1}')
+
+# 3. Leave the worktree
+cd "$MAIN_REPO"
+
+# 4. Check clean (should already be from step 3, but double-check)
+git -C "$WORKTREE_PATH" diff --quiet && git -C "$WORKTREE_PATH" diff --cached --quiet || {
+  echo "Worktree has uncommitted changes. Aborting cleanup."; exit 1;
+}
+
+# 5. Remove the worktree (plain, not --force)
+git worktree remove "$WORKTREE_PATH"
+
+# 6. Force-delete the local branch (-D because PR isn't merged yet)
+git branch -D "$BRANCH"
+
+# 7. Optional: prune stale remote tracking
+git fetch --prune origin
+```
+
+**Confirm to user**:
+- Worktree removed (path)
+- Local branch deleted (`${BRANCH}`)
+- Remote branch + PR **still on GitHub** — nothing lost
+- To restore later: `git fetch origin ${BRANCH}:${BRANCH}`
+
+**If user says no**:
+- Remind: after PR is merged, run manual cleanup:
+  ```
+  cd <main-repo>
+  git worktree remove .worktrees/<slug>
+  git branch -d <type>/<slug>    # -d (safe) works after merge; use -D if not yet merged
+  git fetch --prune origin
+  ```
 
 ## Error handling
 
@@ -162,7 +236,10 @@ After reporting, ask:
 
 - Auto-merge the PR
 - Force-push
-- Delete the worktree or branch (user's responsibility post-merge)
+- **Use `gh auth switch`** (see step 6 — MUST use `GH_TOKEN=... gh ...` inline, every time)
+- `export GH_TOKEN=...` (same reason — leaks token to later commands)
 - Skip scope check
 - Silently modify `gh-accounts.yml` without telling user
-- Use `gh auth switch` / `export GH_TOKEN` — always scope the token to a single command via `GH_TOKEN=... gh ...`
+- Offer cleanup for protected branches (main / master / dev / develop / release/* / hotfix/*)
+- Delete a worktree that has uncommitted changes (abort instead)
+- Act on cleanup without user's explicit "yes"
