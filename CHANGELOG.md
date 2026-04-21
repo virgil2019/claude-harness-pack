@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.0] — 2026-04-21
+
+### Added
+- **`cleanup-task`** skill — dedicated post-merge cleanup. Queries PR state via `gh` before deleting; only proceeds with explicit user confirmation. Uses `-d` (safe delete) for merged branches, `-D` (force) only when user explicitly accepts losing local state (e.g. PR closed-not-merged). Never touches protected branches (main / master / dev / develop / release/* / hotfix/*). Same GH_TOKEN-inline discipline as finish-task.
+
+### Changed
+- **`finish-task` step 11 reverted**: no longer offers to delete local worktree + branch. Rationale: PR is still open at that point; reviewers may need the branch for revisions. Step 11 now just reminds the user to run `cleanup-task` **after merge**.
+
 ## [0.4.0] — 2026-04-21
 
 ### Added

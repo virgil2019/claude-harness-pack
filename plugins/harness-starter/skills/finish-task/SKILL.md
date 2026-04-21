@@ -1,6 +1,6 @@
 ---
 name: finish-task
-description: Wraps up a task in a git worktree. Scope-checks the diff against the plan, walks through done criteria, ensures clean commits, selects the right GitHub account (by SSH alias → gh username mapping in ~/.claude/gh-accounts.yml), pushes the branch, and opens a PR via gh. Uses per-command `GH_TOKEN=$(gh auth token -u X) gh ...` for account selection; **MUST NOT** use `gh auth switch` (stateless by design, race-safe for parallel worktrees). After PR is opened, offers optional retrospective and local cleanup (worktree + branch deletion, never on main / master / dev / develop). Invoke when user says "完成任务", "准备合入", "open PR", "finish task", or similar. Assumes the worktree was created by start-task and contains .task.md. Does NOT auto-merge.
+description: Wraps up a task in a git worktree. Scope-checks the diff against the plan, walks through done criteria, ensures clean commits, selects the right GitHub account (by SSH alias → gh username mapping in ~/.claude/gh-accounts.yml), pushes the branch, and opens a PR via gh. Uses per-command `GH_TOKEN=$(gh auth token -u X) gh ...` for account selection; **MUST NOT** use `gh auth switch` (stateless by design, race-safe for parallel worktrees). After PR is opened, offers optional retrospective. Local cleanup (worktree + branch deletion) is NOT done here — use the separate `cleanup-task` skill after the PR is merged. Invoke when user says "完成任务", "准备合入", "open PR", "finish task", or similar. Assumes the worktree was created by start-task and contains .task.md. Does NOT auto-merge.
 ---
 
 # finish-task
@@ -137,87 +137,31 @@ Note: prefix with `GH_TOKEN="$TOKEN"` **only for this command**. Do not `export`
 
 - PR URL (output from `gh pr create`)
 - Reminder: **do not auto-merge** — user reviews + merges manually
-- Cleanup hint after merge:
+- Cleanup **after PR is merged**: invoke the `cleanup-task` skill (it checks merge state via `gh` before deleting anything). Or do it manually:
   ```
-  cd <original-repo>
+  cd <main-repo>
   git worktree remove .worktrees/<slug>
-  git branch -d <type>/<slug>
+  git branch -d <type>/<slug>     # -d only works if merged; use -D to force
   git fetch --prune origin
   ```
+  **Do not delete local branch / worktree while the PR is still open** — reviewers may request changes that require editing this branch.
 
 ### 10. Offer retrospective (optional)
 
 After reporting, ask:
 > "要跑 retrospect-task 做个复盘吗? 把这次任务里的纠正 / 摩擦 / 可复用模式 固化下来."
 
-- If yes → invoke `retrospect-task` skill (needs `.task.md`, so must run BEFORE cleanup in step 11)
-- If no → proceed to step 11.
+- If yes → invoke `retrospect-task` skill
+- If no → finish.
 - Skip asking if `checkpoint` was run recently (last 10 turns) and covered most of the task.
 
-### 11. Offer local cleanup (worktree + branch)
+### 11. Remind (do not act): cleanup after merge
 
-**Safety filter (protected branches)**: determine current branch and skip this step entirely if it matches any protected pattern:
+**Do not offer to delete anything here** — the PR is still open; reviewers may need the branch for revisions.
 
-```bash
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-case "$BRANCH" in
-  main|master|dev|develop|main/*|master/*|dev/*|develop/*|release/*|hotfix/*)
-    # Never offer to delete these — skip step 11 silently
-    echo "Protected branch ($BRANCH): skipping cleanup offer."
-    exit 0 ;;  # or just `return`, depending on skill runtime
-esac
-```
+Just remind the user:
 
-Only proceed if branch looks like a task branch (e.g., `feat/*`, `fix/*`, `refactor/*`, `chore/*`, `docs/*`, `perf/*`, `test/*`).
-
-**Ask the user**:
-> "PR 已开。要顺手清理本地吗？会删除 worktree `.worktrees/<slug>/` 和本地分支 `${BRANCH}`。（远程分支和 PR 依然在 GitHub 上，merge 后再 fetch 就行。）"
-
-Options:
-- **Yes** — perform cleanup now
-- **No** — keep local state; remind user to do manual cleanup after merge
-
-**If user says yes**:
-
-```bash
-# 1. Find the main repo path (can't remove worktree while inside it)
-MAIN_REPO=$(git worktree list | head -1 | awk '{print $1}')
-
-# 2. Find this worktree's path by branch name
-WORKTREE_PATH=$(git worktree list | awk -v b="[${BRANCH}]" '$3 == b {print $1}')
-
-# 3. Leave the worktree
-cd "$MAIN_REPO"
-
-# 4. Check clean (should already be from step 3, but double-check)
-git -C "$WORKTREE_PATH" diff --quiet && git -C "$WORKTREE_PATH" diff --cached --quiet || {
-  echo "Worktree has uncommitted changes. Aborting cleanup."; exit 1;
-}
-
-# 5. Remove the worktree (plain, not --force)
-git worktree remove "$WORKTREE_PATH"
-
-# 6. Force-delete the local branch (-D because PR isn't merged yet)
-git branch -D "$BRANCH"
-
-# 7. Optional: prune stale remote tracking
-git fetch --prune origin
-```
-
-**Confirm to user**:
-- Worktree removed (path)
-- Local branch deleted (`${BRANCH}`)
-- Remote branch + PR **still on GitHub** — nothing lost
-- To restore later: `git fetch origin ${BRANCH}:${BRANCH}`
-
-**If user says no**:
-- Remind: after PR is merged, run manual cleanup:
-  ```
-  cd <main-repo>
-  git worktree remove .worktrees/<slug>
-  git branch -d <type>/<slug>    # -d (safe) works after merge; use -D if not yet merged
-  git fetch --prune origin
-  ```
+> "PR 开完了。Merge 之后跑 `cleanup-task` skill 清理本地 worktree + 分支（会先查 PR 状态再删，安全）。或者手动: `cd <main-repo> && git worktree remove .worktrees/<slug> && git branch -d <branch> && git fetch --prune origin`."
 
 ## Error handling
 
@@ -240,6 +184,4 @@ git fetch --prune origin
 - `export GH_TOKEN=...` (same reason — leaks token to later commands)
 - Skip scope check
 - Silently modify `gh-accounts.yml` without telling user
-- Offer cleanup for protected branches (main / master / dev / develop / release/* / hotfix/*)
-- Delete a worktree that has uncommitted changes (abort instead)
-- Act on cleanup without user's explicit "yes"
+- **Delete worktree / branch while PR is still open** — reviewers may request changes. Cleanup belongs in the separate `cleanup-task` skill, run after merge.
