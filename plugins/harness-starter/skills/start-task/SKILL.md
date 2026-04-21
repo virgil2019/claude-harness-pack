@@ -64,7 +64,7 @@ REPO_NAME=$(basename "$REPO_ROOT")
 - **Slug**: lowercase ASCII kebab-case from description, ≤ 40 chars
   - "Add OAuth for GitHub login" → `add-oauth-github-login`
 - **Branch**: `<type>/<slug>` (e.g. `feat/add-oauth-github-login`)
-- **Worktree path**: `../<REPO_NAME>-<slug>/`
+- **Worktree path**: `<REPO_ROOT>/.worktrees/<slug>/` (inside the repo; `.worktrees/` is git-ignored)
 - If worktree path already exists, append `-2`, `-3`, ...
 
 ### 2. Produce plan (3-6 bullets)
@@ -89,13 +89,31 @@ Tailor to quality target:
 - `commercial`: + basic tests where relevant
 - `production`: + tests + type check + lint + no regressions
 
-### 4. Create worktree
+### 4. Create worktree (inside repo at `.worktrees/`)
+
+#### 4a. Ensure `.worktrees/` is git-ignored
+
+```bash
+GITIGNORE="${REPO_ROOT}/.gitignore"
+if ! grep -qxF ".worktrees/" "$GITIGNORE" 2>/dev/null; then
+  echo ".worktrees/" >> "$GITIGNORE"
+  # Inform user: committed later (user's choice when to commit .gitignore changes)
+fi
+```
+
+#### 4b. Create the worktree
 
 ```bash
 git fetch origin "$BASE_BRANCH"
-git worktree add "../${REPO_NAME}-${SLUG}" -b "${TYPE}/${SLUG}" "origin/${BASE_BRANCH}"
-cd "../${REPO_NAME}-${SLUG}"
+mkdir -p "${REPO_ROOT}/.worktrees"
+git worktree add "${REPO_ROOT}/.worktrees/${SLUG}" -b "${TYPE}/${SLUG}" "origin/${BASE_BRANCH}"
+cd "${REPO_ROOT}/.worktrees/${SLUG}"
 ```
+
+Note: `.worktrees/` was chosen over sibling-directory naming (`../repo-slug/`) because:
+- Keeps workspace root uncluttered (one dir per project, not N)
+- All worktrees co-located for easy discovery (`ls .worktrees/`)
+- Automatically ignored via `.gitignore`, never accidentally committed
 
 ### 5. Write `.task.md` in worktree root
 

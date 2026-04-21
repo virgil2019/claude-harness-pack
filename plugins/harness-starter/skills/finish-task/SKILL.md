@@ -131,7 +131,7 @@ Note: prefix with `GH_TOKEN="$TOKEN"` **only for this command**. Do not `export`
 - Cleanup hint after merge:
   ```
   cd <original-repo>
-  git worktree remove ../<repo>-<slug>
+  git worktree remove .worktrees/<slug>
   git branch -d <type>/<slug>
   git fetch --prune origin
   ```

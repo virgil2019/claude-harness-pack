@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.3.0] — 2026-04-21
+
+### Changed
+- **`start-task`** now creates worktrees **inside the repo** at `<repo>/.worktrees/<slug>/` (previously sibling-level at `../<repo>-<slug>/`). Cleaner workspace root, all worktrees co-located, auto-gitignored.
+- `start-task` automatically adds `.worktrees/` to `.gitignore` on first use if not already present.
+- **`finish-task`** cleanup hint updated to the new worktree location.
+
 ## [0.2.0] — 2026-04-21
 
 ### Added
