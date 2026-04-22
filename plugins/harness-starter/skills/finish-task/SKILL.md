@@ -77,7 +77,12 @@ ALIAS=$(echo "$REMOTE_URL" | sed -nE 's@^git@([^:]+):.*$@\1@p')
 ### 5. Look up gh username from mapping
 
 ```bash
-USERNAME=$(grep -E "^${ALIAS}:" ~/.claude/gh-accounts.yml 2>/dev/null | sed 's/^[^:]*: *//' | tr -d '"'"'")
+# NOTE: use GH_USER (not USERNAME). zsh treats USERNAME as a special parameter
+# bound to the system login name — any assignment is silently ignored, so the
+# variable would carry `$USER` into downstream gh calls and pick the wrong account.
+# Other zsh specials to avoid as local vars: HOME / PATH / PWD / UID / EUID /
+# LOGNAME / SHELL / HOSTNAME / SECONDS / RANDOM / LINENO / COLUMNS / LINES.
+GH_USER=$(grep -E "^${ALIAS}:" ~/.claude/gh-accounts.yml 2>/dev/null | sed 's/^[^:]*: *//' | tr -d '"'"'")
 ```
 
 - If no mapping found:
@@ -91,8 +96,8 @@ USERNAME=$(grep -E "^${ALIAS}:" ~/.claude/gh-accounts.yml 2>/dev/null | sed 's/^
 ### 6. Get the token for this account (⚠️ MUST use GH_TOKEN, NEVER `gh auth switch`)
 
 ```bash
-TOKEN=$(gh auth token -u "$USERNAME" 2>/dev/null)
-[ -n "$TOKEN" ] || { echo "gh is not authed for $USERNAME. Run: gh auth login"; exit 1; }
+TOKEN=$(gh auth token -u "$GH_USER" 2>/dev/null)
+[ -n "$TOKEN" ] || { echo "gh is not authed for $GH_USER. Run: gh auth login"; exit 1; }
 ```
 
 **🚫 FORBIDDEN in this skill**:

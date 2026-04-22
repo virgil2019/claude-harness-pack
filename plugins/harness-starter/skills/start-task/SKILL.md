@@ -39,6 +39,37 @@ If either is `no`:
 
 If both are `yes`, proceed.
 
+### 0.5. Resume detection — surface in-flight tasks before creating a new one
+
+Do NOT silently create another worktree if an in-flight task already exists. Check:
+
+```bash
+# List every worktree other than the primary
+git worktree list --porcelain | awk '
+  /^worktree / {wt=$2}
+  /^branch / {br=$2}
+  /^$/ {if (wt && br && wt != primary) print wt "\t" br; wt=""; br=""}
+' primary="$(git rev-parse --show-toplevel)"
+```
+
+For each secondary worktree, a task is **in flight** if ANY of these hold:
+- A `.task.md` exists in its root
+- Its branch has staged or uncommitted changes (`git -C <wt> status --porcelain` non-empty)
+- Its branch has commits ahead of `origin/<base>` that are not yet merged
+
+If any in-flight task is found, show the user:
+
+> 发现进行中的任务:
+> - `<branch>` @ `<worktree-path>` (uncommitted: N files, commits ahead: M)
+>   — `<first line of .task.md, or "no .task.md">`
+>
+> 继续这个任务 (resume) 还是开新任务?
+
+- **Resume** → abort start-task. Tell user to `cd` into that worktree. If the task looks done (all done criteria `[x]`, files staged), suggest `/finish-task`.
+- **New task** → proceed to section 1 below.
+
+If nothing in flight, proceed.
+
 ### 1. Repo info
 
 ```bash

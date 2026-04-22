@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.1] — 2026-04-22
+
+### Fixed
+- **Bash variable `USERNAME` was silently ignored under zsh**, causing `finish-task` / `cleanup-task` / `init-repo` to fall back to default gh account (e.g. opening a PR under the wrong user). `USERNAME` is a zsh special parameter bound to the system login name; assignments don't stick. Renamed to `GH_USER` in all three skills, with inline comments documenting the zsh specials to avoid as local variables (`HOME` / `PATH` / `PWD` / `UID` / `EUID` / `LOGNAME` / `SHELL` / `HOSTNAME` / `SECONDS` / `RANDOM` / `LINENO` / `COLUMNS` / `LINES`). Affects Claude Code installations where the Bash tool runs zsh (most macOS setups).
+
 ## [0.5.0] — 2026-04-21
 
 ### Added

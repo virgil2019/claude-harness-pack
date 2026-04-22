@@ -61,21 +61,24 @@ if ! git rev-parse HEAD >/dev/null 2>&1; then
 fi
 ```
 
-Note: use `GIT_USER_NAME` / `GIT_USER_EMAIL` values associated with the chosen GitHub account (e.g., `${USERNAME}@users.noreply.github.com`). If global git config is already set, you can rely on that instead.
+Note: use `GIT_USER_NAME` / `GIT_USER_EMAIL` values associated with the chosen GitHub account (e.g., `${GH_USER}@users.noreply.github.com`). If global git config is already set, you can rely on that instead.
 
 ### 4. Create GitHub repo via gh (race-safe)
 
 ```bash
-USERNAME=$(grep -E "^${SSH_ALIAS}:" ~/.claude/gh-accounts.yml | head -1 | sed 's/^[^:]*: *//' | tr -d '"'"'"' ')
-[ -n "$USERNAME" ] || { echo "No mapping for $SSH_ALIAS in ~/.claude/gh-accounts.yml"; exit 1; }
+# NOTE: use GH_USER (not USERNAME). zsh treats USERNAME as a special parameter
+# bound to the system login name — assignment is silently ignored. See the
+# same note in finish-task's step 5 for the full list of zsh specials to avoid.
+GH_USER=$(grep -E "^${SSH_ALIAS}:" ~/.claude/gh-accounts.yml | head -1 | sed 's/^[^:]*: *//' | tr -d '"'"'"' ')
+[ -n "$GH_USER" ] || { echo "No mapping for $SSH_ALIAS in ~/.claude/gh-accounts.yml"; exit 1; }
 
-TOKEN=$(gh auth token -u "$USERNAME" 2>/dev/null)
-[ -n "$TOKEN" ] || { echo "gh not authed for $USERNAME. Run: gh auth login"; exit 1; }
+TOKEN=$(gh auth token -u "$GH_USER" 2>/dev/null)
+[ -n "$TOKEN" ] || { echo "gh not authed for $GH_USER. Run: gh auth login"; exit 1; }
 
 VISIBILITY_FLAG="--private"
 [ "$VISIBILITY" = "public" ] && VISIBILITY_FLAG="--public"
 
-GH_TOKEN="$TOKEN" gh repo create "${USERNAME}/${REPO_NAME}" \
+GH_TOKEN="$TOKEN" gh repo create "${GH_USER}/${REPO_NAME}" \
   ${VISIBILITY_FLAG} \
   ${DESCRIPTION:+--description "$DESCRIPTION"}
 ```
@@ -85,7 +88,7 @@ Use `GH_TOKEN=... gh` **inline** (not `gh auth switch`). Stateless, safe for par
 ### 5. Set remote with SSH alias
 
 ```bash
-git remote add origin "git@${SSH_ALIAS}:${USERNAME}/${REPO_NAME}.git"
+git remote add origin "git@${SSH_ALIAS}:${GH_USER}/${REPO_NAME}.git"
 ```
 
 This ensures all future `git push / pull` on this repo route through the correct SSH key.
@@ -101,7 +104,7 @@ If push fails: stop, show output, ask user. Never force-push.
 ### 7. Report
 
 Summarize:
-- Repo URL: `https://github.com/${USERNAME}/${REPO_NAME}`
+- Repo URL: `https://github.com/${GH_USER}/${REPO_NAME}`
 - Visibility + description
 - Remote URL (confirms SSH alias)
 - Local branch (main) + commit SHA

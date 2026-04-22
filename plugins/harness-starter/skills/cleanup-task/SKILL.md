@@ -50,9 +50,12 @@ cd "$MAIN_REPO"
 
 REMOTE_URL=$(git remote get-url origin)
 ALIAS=$(echo "$REMOTE_URL" | sed -nE 's@^git@([^:]+):.*$@\1@p')
-USERNAME=$(grep -E "^${ALIAS}:" ~/.claude/gh-accounts.yml 2>/dev/null | sed 's/^[^:]*: *//' | tr -d '"'"'"' ')
-TOKEN=$(gh auth token -u "$USERNAME" 2>/dev/null)
-[ -n "$TOKEN" ] || { echo "gh not authed for $USERNAME. Run: gh auth login"; exit 1; }
+# NOTE: use GH_USER (not USERNAME). zsh treats USERNAME as a special parameter
+# bound to the system login name — assignment is silently ignored. See the
+# same note in finish-task's step 5 for the full list of zsh specials to avoid.
+GH_USER=$(grep -E "^${ALIAS}:" ~/.claude/gh-accounts.yml 2>/dev/null | sed 's/^[^:]*: *//' | tr -d '"'"'"' ')
+TOKEN=$(gh auth token -u "$GH_USER" 2>/dev/null)
+[ -n "$TOKEN" ] || { echo "gh not authed for $GH_USER. Run: gh auth login"; exit 1; }
 ```
 
 **⚠️ MUST use `GH_TOKEN=... gh ...` inline, NEVER `gh auth switch`.**
