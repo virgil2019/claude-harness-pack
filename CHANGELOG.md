@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.0] — 2026-04-22
+
+### Added — `start-task` Mode A (in-place)
+
+`start-task` now asks the user to pick a mode before creating anything:
+
+- **Mode A · 就地模式**: stay in current directory. If the current branch is protected (`main`/`master`/`dev`/`develop`), offers to `git checkout -b <type>/<slug>`. Writes task file to `<REPO_ROOT>/.tasks/<slug>.md` — **persistent across task cleanups**, scannable as a historical record. Adds `.tasks/` to `.gitignore` on first use.
+- **Mode B · 新 worktree 模式**: original behavior — `.worktrees/<slug>/` + new branch + cd + `.task.md`.
+
+Picks addressed:
+- Users who pre-check-out their own branch no longer get a forced duplicate worktree.
+- Lightweight tasks in an existing checkout are first-class (no worktree tax).
+- Historical task records survive `cleanup-task` (Mode A files outlive the worktree).
+
+### Changed
+
+- **`start-task` pre-flight**: hardened to MUST actually run `git rev-parse --is-inside-work-tree` and `git remote` via Bash, then decide. Explicit rule: **task type `feat` does NOT imply "new repo"** — only git output signals init-repo delegation. Fixes the earlier misrouting where Mode-B-on-feature-branch went to init-repo.
+- **`start-task`**: requires `Write` with **absolute paths** for task file (both modes). Documents the cwd trap — `cd` only affects Bash, not Read/Write/Edit.
+- **`finish-task`**: locates task file at either `<REPO_ROOT>/.task.md` (Mode B) or `<PRIMARY_ROOT>/.tasks/<slug>.md` (Mode A). Derives slug from branch name. No longer hard-requires being in a worktree.
+- **`retrospect-task`**: same dual-location lookup as finish-task.
+
+### Notes
+
+Existing v0.5.x tasks (only Mode B existed) continue to work — their `.task.md` at worktree root is still recognized.
+
 ## [0.5.1] — 2026-04-22
 
 ### Fixed

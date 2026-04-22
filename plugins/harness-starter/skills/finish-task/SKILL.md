@@ -1,6 +1,6 @@
 ---
 name: finish-task
-description: Wraps up a task in a git worktree. Scope-checks the diff against the plan, walks through done criteria, ensures clean commits, selects the right GitHub account (by SSH alias → gh username mapping in ~/.claude/gh-accounts.yml), pushes the branch, and opens a PR via gh. Uses per-command `GH_TOKEN=$(gh auth token -u X) gh ...` for account selection; **MUST NOT** use `gh auth switch` (stateless by design, race-safe for parallel worktrees). After PR is opened, offers optional retrospective. Local cleanup (worktree + branch deletion) is NOT done here — use the separate `cleanup-task` skill after the PR is merged. Invoke when user says "完成任务", "准备合入", "open PR", "finish task", or similar. Assumes the worktree was created by start-task and contains .task.md. Does NOT auto-merge.
+description: Wraps up a task opened via start-task. Works in either mode — (A) in-place: user is on a branch in the primary tree, task file at `<REPO_ROOT>/.tasks/<slug>.md`; (B) worktree: user is in `.worktrees/<slug>/`, task file at `<worktree>/.task.md`. Scope-checks the diff against the plan, walks through done criteria, ensures clean commits, selects the right GitHub account (by SSH alias → gh username mapping in ~/.claude/gh-accounts.yml), pushes the branch, and opens a PR via gh. Uses per-command `GH_TOKEN=$(gh auth token -u X) gh ...` for account selection; **MUST NOT** use `gh auth switch`. After PR opens, offers optional retrospective. Local cleanup is NOT done here — use `cleanup-task` after merge. Invoke when user says "完成任务", "准备合入", "open PR", "finish task", or similar. Does NOT auto-merge.
 ---
 
 # finish-task
@@ -8,24 +8,46 @@ description: Wraps up a task in a git worktree. Scope-checks the diff against th
 ## When to invoke
 
 - User says "完成任务" / "finish task" / "准备合入" / "open PR" / "我搞定了"
-- Assumes you are currently in a worktree created by `start-task`
-- `.task.md` should exist in worktree root
+- You are on a task branch created (or selected) via `start-task` — works in both modes:
+  - **Mode A** (in-place): you are in the primary working tree, on a `<type>/<slug>` branch, task file at `<REPO_ROOT>/.tasks/<slug>.md`
+  - **Mode B** (worktree): you are in `<REPO_ROOT>/.worktrees/<slug>/`, task file at `<worktree>/.task.md`
 
-## Pre-flight
+## Pre-flight — locate task file (handle both modes)
 
 ```bash
-# Must be in a worktree (not primary working tree)
-GIT_DIR=$(git rev-parse --git-dir)
-GIT_COMMON_DIR=$(git rev-parse --git-common-dir)
-[ "$GIT_DIR" != "$GIT_COMMON_DIR" ] || { echo "Not in a worktree"; exit 1; }
+# Repo paths (absolute)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+COMMON_DIR=$(git rev-parse --git-common-dir)
+# If in a linked worktree, the primary repo root is above --git-common-dir
+PRIMARY_ROOT=$(cd "$COMMON_DIR/.." && pwd)
 
-# .task.md should exist
-[ -f .task.md ] || echo "Warning: .task.md not found — continue without plan reference?"
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# Derive slug from branch name: strip leading "<type>/"
+SLUG="${BRANCH#*/}"
+
+# Determine which mode we're in, based on where we are + where .task.md lives
+TASK_FILE=""
+if [ -f "$REPO_ROOT/.task.md" ]; then
+  # Mode B: inside the worktree
+  TASK_FILE="$REPO_ROOT/.task.md"
+  MODE="B"
+elif [ -f "$PRIMARY_ROOT/.tasks/$SLUG.md" ]; then
+  # Mode A: primary tree, per-slug file
+  TASK_FILE="$PRIMARY_ROOT/.tasks/$SLUG.md"
+  MODE="A"
+else
+  echo "Warning: no task file found at either:"
+  echo "  Mode B:  $REPO_ROOT/.task.md"
+  echo "  Mode A:  $PRIMARY_ROOT/.tasks/$SLUG.md"
+  echo "Proceed without plan reference? (lose scope check + auto-generated PR body)"
+fi
 
 # Base branch
 BASE=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-[ -n "$BASE" ] || BASE=$(grep -m1 "^- \*\*Base\*\*:" .task.md 2>/dev/null | sed 's/.*: //')
+[ -n "$BASE" ] || BASE=$(grep -m1 "^- \*\*Base\*\*:" "$TASK_FILE" 2>/dev/null | sed 's/.*: //')
 ```
+
+> Use absolute `$TASK_FILE` in every subsequent Read/Write/Edit call. Bash's cwd may differ from session's; never use `./.task.md` relative.
 
 ## Flow
 
@@ -132,7 +154,7 @@ Build body:
 ```bash
 GH_TOKEN="$TOKEN" gh pr create \
   --title "${TYPE}: ${DESCRIPTION}" \
-  --body "$(cat .task.md)" \
+  --body "$(cat "$TASK_FILE")" \
   --base "$BASE"
 ```
 
@@ -172,8 +194,8 @@ Just remind the user:
 
 | Issue | Response |
 |---|---|
-| Not in worktree | Abort, explain |
-| `.task.md` missing | Ask user to proceed without plan reference (lose scope check + auto body) |
+| Task file missing at both Mode A and Mode B locations | Ask user to proceed without plan reference (lose scope check + auto body) |
+| On protected branch (main/master/dev/develop) | Warn loudly; ask user to confirm they really want to PR from protected branch — usually user missed start-task's branch-switch step |
 | Dirty working tree | Help commit or stash |
 | No SSH alias in remote URL | Ask user which gh account to use |
 | No mapping in gh-accounts.yml | Prompt to add; offer to update the file |

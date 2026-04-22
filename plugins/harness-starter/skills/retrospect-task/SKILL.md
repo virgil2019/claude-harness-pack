@@ -13,10 +13,26 @@ End-of-task comprehensive review. The last step of the evolution loop.
 - User says: "回顾一下" / "retrospect" / "task 复盘" / "总结下这个 task"
 - A long / difficult task is ending and final codifications should happen before memory fades
 
-## Pre-flight
+## Pre-flight — locate task file (both start-task modes)
 
-- `.task.md` should exist (usually in current worktree); if not, ask user for task reference
-- If `checkpoint` was run during the task, read its entries in `.task.md` Notes to avoid re-covering already-codified lessons
+Same logic as `finish-task`:
+
+```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+COMMON_DIR=$(git rev-parse --git-common-dir)
+PRIMARY_ROOT=$(cd "$COMMON_DIR/.." && pwd)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SLUG="${BRANCH#*/}"
+
+TASK_FILE=""
+[ -f "$REPO_ROOT/.task.md" ] && TASK_FILE="$REPO_ROOT/.task.md"                    # Mode B
+[ -z "$TASK_FILE" ] && [ -f "$PRIMARY_ROOT/.tasks/$SLUG.md" ] && \
+  TASK_FILE="$PRIMARY_ROOT/.tasks/$SLUG.md"                                         # Mode A
+```
+
+- If no task file at either path, ask user to point to the right file (e.g., `.tasks/<name>.md` if slug differs from branch tail)
+- If `checkpoint` was run during the task, read its entries in the Notes section to avoid re-covering already-codified lessons
+- Use absolute `$TASK_FILE` in every Read/Write/Edit call below — never relative
 
 ## Flow
 
@@ -69,7 +85,7 @@ For each item:
 
 Show user diff / content before applying each. Batch approval OK ("全部执行" → proceed all).
 
-### 5. Append to `.task.md`
+### 5. Append to the task file (absolute path `$TASK_FILE`)
 
 ```markdown
 ### Retrospective @ <YYYY-MM-DD HH:MM>
