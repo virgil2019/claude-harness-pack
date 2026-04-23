@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.1] — 2026-04-23
+
+### Fixed — clearer post-start-task instructions
+
+- **Mode A report** now explicitly states: stay in the current session, no directory switch needed.
+- **Mode B report** now explicitly recommends **closing the current session and opening a new Claude Code inside the worktree** (with the exact `exit → cd → claude` steps shown). Rationale: the current session's cwd mental model stays in the primary repo even after Bash `cd`'s into the worktree; subagents and Read/Write/Edit resolve paths against the old cwd, leading to subtle wrong-directory bugs. A fresh session in the worktree aligns everything.
+- Documents the escape hatch: if user insists on staying in the current session (e.g., for a very small Mode B task), all Read/Write/Edit must use absolute paths to the worktree.
+
+No behavior changes to the skill's actions — only clearer human-facing report.
+
 ## [0.6.0] — 2026-04-22
 
 ### Added — `start-task` Mode A (in-place)

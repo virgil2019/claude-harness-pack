@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Harness engineering starter pack for Claude Code: 7 skills for safety, task workflow, and evolution loop.",
-    "version": "0.6.0"
+    "version": "0.6.1"
   },
   "plugins": [
     {
       "name": "harness-starter",
       "description": "Bootstraps a Claude Code user environment and provides worktree+PR task workflow plus an evolution-loop (feedback/checkpoint/retrospect) on top of it.",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "author": {
         "name": "George Huang"
       },

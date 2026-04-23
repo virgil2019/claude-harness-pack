@@ -197,7 +197,9 @@ Content format (same as Mode B's `.task.md`):
 - **Branch**: `<branch-used>`
 - **Task file**: `$REPO_ROOT/.tasks/<slug>.md` (absolute)
 - **No worktree** — edits happen in the current directory
-- Next: code in current dir; when done, run `/finish-task`
+
+> ✅ **继续在当前 session 工作**。不需要切目录，也不需要开新 Claude Code session。
+> 完成后跑 `/finish-task`；想中途盘点跑 `/checkpoint`；想随时固化规则跑 `/codify-feedback`。
 
 ---
 
@@ -237,7 +239,21 @@ Write(file_path="<absolute: $WORKTREE_PATH/.task.md>", content=<task file markdo
 - **Worktree path**: `$WORKTREE_PATH`
 - **Branch**: `<type>/<slug>` (forked from `origin/<base>@<short-SHA>`)
 - **Task file**: `$WORKTREE_PATH/.task.md`
-- **Reminder**: subsequent work happens **in this worktree** — Bash is now `cd`'d there, but see the cwd trap below.
+
+> 🔄 **下一步: 在 worktree 里开新 Claude Code session (强烈推荐)**
+>
+> 当前 session 的 cwd 心智模型还停留在 `$REPO_ROOT`; Bash 虽然 cd 到 worktree 了, 但 Read/Write/Edit 和 subagents 还按老 cwd 解析路径. 在新 session 里打开 worktree 目录, 一切自动归位.
+>
+> ```bash
+> # 1. 退出当前 session  (Ctrl+D, 或 /exit)
+> # 2. 切到 worktree
+> cd "$WORKTREE_PATH"
+> # 3. 启动新 Claude Code session
+> claude
+> # 4. 新 session 里说 "继续这个任务" / "resume" — Claude 会读 .task.md 自动接上下文
+> ```
+>
+> ⚠️ **不推荐**留在当前 session 继续干活: cwd 心智错位, 容易出现 "Bash 跑对了但 Write 落错目录" 这类诡异问题. 如果确实要留 (比如任务很小), 记得**所有 Read/Write/Edit 都传绝对路径** `$WORKTREE_PATH/...`.
 
 ---
 
