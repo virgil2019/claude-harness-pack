@@ -98,37 +98,39 @@ git diff --quiet && git diff --cached --quiet || {
 
 If dirty: abort, show `git status`, tell user to handle changes first.
 
-### 4. Perform cleanup
+### 4. Perform cleanup — **atomic, single Bash call**
+
+Run all three steps in **ONE Bash tool call** (use `&&` / sequential chain). Reasons:
+- Bash tool's persisted cwd is set once by the initial `cd`; if cleanup steps are split across multiple tool calls, any mid-step failure can leave the persisted cwd pointing at a half-deleted directory → subsequent `chdir()` fails → the session's Bash gets stuck
+- Atomic cleanup also means one log to report
+
+Template (decide `-d` vs `-D` based on `$STATE` from step 2):
 
 ```bash
-# Leave the worktree first (can't remove while inside)
-cd "$MAIN_REPO"
+cd "$MAIN_REPO" || { echo "cd to $MAIN_REPO failed, aborting"; exit 1; }
 
-# Remove the worktree
-git worktree remove "$WORKTREE_PATH"
-
-# Delete the local branch
-#   -d if PR was MERGED (safe: git will verify branch is reachable from main)
-#   -D if CLOSED-not-merged (user explicitly accepted losing local-only changes)
-#   -D if OPEN (user explicitly accepted)
-if [ "$STATE" = "MERGED" ]; then
-  git branch -d "$BRANCH"
-else
-  git branch -D "$BRANCH"
-fi
-
-# Prune stale remote-tracking refs
-git fetch --prune origin
+git worktree remove "$WORKTREE_PATH" \
+  && { [ "$STATE" = "MERGED" ] && git branch -d "$BRANCH" || git branch -D "$BRANCH"; } \
+  && git fetch --prune origin \
+  && echo "✅ cleanup done"
 ```
 
-### 5. Report
+Use `git branch -d` only when `$STATE` = `MERGED` (safe). Use `-D` (force) when `$STATE` = `CLOSED-not-merged` or `OPEN` — only after explicit user yes in step 2.
 
-Tell user:
-- Worktree removed: `<path>`
-- Local branch deleted: `<branch>`
-- Remote branch: still on GitHub (if PR was merged, GitHub's auto-delete-on-merge may have already removed it — check)
-- PR URL: `<url>` (if it existed)
-- To restore later: `git fetch origin <branch>:<branch>` (only works if remote branch still exists)
+### 5. Report — **terse + exit hint**
+
+Keep output to 5-6 lines total. No prose, no re-explanation of what cleanup-task does. Just facts + exit hint:
+
+```
+✅ 清理完成
+· worktree removed: <WORKTREE_PATH>
+· branch deleted: <BRANCH> (<-d or -D>)
+· remote pruned
+
+🚪 建议 /exit 关闭当前 session — 本 session 可能还缓存了已删目录的状态. 下次 `cd <MAIN_REPO> && claude` 起新 session.
+```
+
+> ⚠️ Do NOT append verbose recovery instructions ("如果 bash 卡了, 先 cd ~ 然后..."), do NOT list PR URL again, do NOT explain the fetch --prune purpose. The user already read this skill's description once; don't repeat.
 
 ## Error handling
 
@@ -152,6 +154,8 @@ Tell user:
 - Delete a protected branch (main / master / dev / develop / release/* / hotfix/*)
 - Delete the remote branch (that's GitHub's / user's call, not this skill's)
 - Run on a dirty worktree
+- **Split cleanup into multiple Bash tool calls** — atomic single call only; otherwise Bash's persisted cwd can end up pointing at the half-deleted worktree and all subsequent commands fail with chdir errors
+- **Append verbose recovery instructions** after a successful cleanup — trust the exit hint, don't re-explain
 
 ## Relationship to other skills
 

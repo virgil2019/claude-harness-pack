@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.2] — 2026-04-23
+
+### Fixed — `cleanup-task` UX: atomic cleanup + terse output + exit hint
+
+**Problem**: previously, if `cleanup-task` was invoked from inside the worktree being deleted, and the cleanup steps were split across multiple Bash tool calls, Bash's persisted cwd could end up pointing at a half-removed directory — all subsequent commands then failed with `chdir()` errors, leaving the session stuck. The agent would respond with long prose telling the user how to recover manually.
+
+**Fix**:
+- Cleanup steps (`cd` + `git worktree remove` + `git branch -d/-D` + `git fetch --prune`) now **MUST run in one atomic Bash tool call**, chained with `&&`. This guarantees Bash's persisted cwd ends up in a valid directory regardless of which step fails.
+- Report format is now **terse** (5-6 lines max): checklist of what happened + `🚪 建议 /exit` hint. No verbose recovery prose.
+- `Do NOT` list hardened: forbid splitting cleanup across tool calls, forbid appending verbose recovery guidance after a successful cleanup.
+
 ## [0.6.1] — 2026-04-23
 
 ### Fixed — clearer post-start-task instructions
