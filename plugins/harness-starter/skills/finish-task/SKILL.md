@@ -173,16 +173,69 @@ Note: prefix with `GH_TOKEN="$TOKEN"` **only for this command**. Do not `export`
   ```
   **Do not delete local branch / worktree while the PR is still open** — reviewers may request changes that require editing this branch.
 
-### 10. Offer retrospective (optional)
+### 10. Handle Deferred items (if any)
+
+Read the `## Deferred` section from `$TASK_FILE`. Strip empty lines and comments. Count remaining bullet points.
+
+**If empty** → skip this step entirely.
+
+**If non-empty**, show to user:
+
+```
+📋 发现 <N> 个 deferred 项 (task 过程中累积的 follow-up):
+  1. <item 1>
+  2. <item 2>
+  ...
+
+要怎么处理? (多选可组合, 比如 "a+d")
+  a) 为每项建 **GitHub issue** (用本 repo 对应账号, 会 label "deferred" 并链接到 PR #<num>)
+  b) 追加到 项目根 `TODO.md` (需要你额外 commit 这个文件)
+  c) 记到 `~/memo.md` (个人 scratchpad, 通过 take-note skill)
+  d) 留着 — 已在 PR body 里 (reviewer 能看), 不另外处理
+```
+
+Wait for explicit choice.
+
+**Execute per choice**:
+
+- **a) GitHub issues** — for each item, run (absolute `GH_TOKEN` inline):
+  ```bash
+  GH_TOKEN="$TOKEN" gh issue create \
+    --title "<item-one-liner>" \
+    --body $'Deferred from PR <pr-url>\n\n<full-item-text>\n\n(原任务: <task-slug>)' \
+    --label "deferred"
+  ```
+  Show each issue URL. Then update PR body (edit PR) appending `\n\n## Deferred tracked as\n- #<issue1>\n- #<issue2>`.
+
+- **b) TODO.md** — append to `$PRIMARY_ROOT/TODO.md`:
+  ```markdown
+  ## From <task-slug> (PR #<num>) — <YYYY-MM-DD>
+  - [ ] <item 1>
+  - [ ] <item 2>
+  ```
+  Warn user: "`TODO.md` 是 committed file; 这次改动不会自动 commit, 你需要在**主 repo**手动 `git add TODO.md && commit` (可能另开一个 chore PR)".
+
+- **c) memo.md** — invoke `take-note` skill with content:
+  ```
+  # Deferred from <task-slug>
+  ... full Deferred list ...
+  (PR: <url>)
+  ```
+
+- **d) Leave** — no action. Deferred list stays in `.task.md` and the PR body. (For Mode B tasks, this means deferred items disappear when `cleanup-task` removes the worktree — warn user of this loss risk if they pick d in Mode B.)
+
+**Do NOT** apply without explicit confirmation. Show what will happen before acting.
+
+### 11. Offer retrospective (optional)
 
 After reporting, ask:
 > "要跑 retrospect-task 做个复盘吗? 把这次任务里的纠正 / 摩擦 / 可复用模式 固化下来."
 
 - If yes → invoke `retrospect-task` skill
-- If no → finish.
+- If no → proceed to step 12.
 - Skip asking if `checkpoint` was run recently (last 10 turns) and covered most of the task.
 
-### 11. Remind (do not act): cleanup after merge
+### 12. Remind (do not act): cleanup after merge
 
 **Do not offer to delete anything here** — the PR is still open; reviewers may need the branch for revisions.
 

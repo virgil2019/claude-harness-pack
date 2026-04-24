@@ -48,6 +48,28 @@ Decision rule:
 
 Only the two git commands' output decides.
 
+### 0.3. Worktree defense — refuse to start inside a linked worktree
+
+A common UX trap: user already in a Mode-B worktree runs `/start-task` again, meaning to "continue work", but the skill would instead **nest another `.worktrees/<slug>/` inside the existing worktree**. Detect and ask first.
+
+```bash
+GIT_DIR=$(git rev-parse --git-dir)
+GIT_COMMON_DIR=$(git rev-parse --git-common-dir)
+```
+
+If `GIT_DIR != GIT_COMMON_DIR` → currently inside a linked worktree. Ask the user:
+
+> ⚠️ 当前在 linked worktree `<current-path>` (分支 `<branch>`). start-task 建议只在 **primary working tree** 里跑。
+>
+> 选:
+> A. **继续当前任务** — 不跑 start-task, 直接说 "继续 / resume", Claude 会读 `.task.md` 恢复上下文.
+> B. **开新任务** — 先 `cd <PRIMARY_ROOT>` (再起新 session 更干净), 然后在 primary tree 里再 `/start-task`.
+> C. **无视, 嵌套建新 worktree** (不推荐).
+
+Abort by default on unclear answer. Do not guess — explicitly wait.
+
+`GIT_DIR == GIT_COMMON_DIR` → you're in the primary tree, proceed normally (任何分支, 包括刚 `git checkout -b` 的 feature 分支, 都 OK).
+
 ### 0.5. Resume detection — surface in-flight tasks
 
 Don't silently create another worktree if an in-flight task already exists:
@@ -189,6 +211,10 @@ Content format (same as Mode B's `.task.md`):
 
 ## Notes
 <!-- append progress, decisions, surprises here -->
+
+## Deferred
+<!-- 本 task 不做 / 过程中发现值得另开 task 跟进的事. 空的话 finish-task 会跳过. -->
+<!-- 格式: - <one-line description> (reason / estimate) -->
 ```
 
 ### A.4. Report
@@ -281,6 +307,18 @@ Internally, the skill should:
 | Mode B branch name collision | Append `-2`, etc., or ask |
 | Dirty working tree in Mode B | Ask "proceed anyway? (worktree forks from origin, not your dirty state)" |
 | No base branch detectable | Ask user for base branch name |
+
+## Behavioral rule — **必须同步记录 Deferred**
+
+干活过程中, 凡是你（AI）建议"先放着 / 后面另开 task 改 / out of scope", 不能只在对话里说——**必须 append 到 `$TASK_FILE` 的 Deferred 节**. Append 格式:
+
+```
+- <item> (<reason / estimate>)
+```
+
+例子:
+- 在 finish-task 时, Deferred 节非空 → skill 会问用户怎么处理 (建 GitHub issue / TODO.md / memo / leave).
+- 如果 Deferred 只在 chat 里, finish-task 看不到, `/exit` 后用户会忘.
 
 ## Do NOT
 

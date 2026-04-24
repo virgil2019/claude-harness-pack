@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.7.0] — 2026-04-24
+
+### Added
+
+- **`start-task` 0.3 Worktree defense**: refuses to start a new task when already inside a linked worktree (common UX trap: user in Mode-B worktree runs `/start-task` meaning to "continue" but would nest worktrees). Detects via `git rev-parse --git-dir` vs `--git-common-dir` comparison. Offers 3 choices: continue current task (skip start-task), cd to primary repo first, or force-nest.
+- **`.task.md` / `.tasks/<slug>.md` template**: new `## Deferred` section for follow-up items that surface during work but aren't done this task.
+- **`start-task` behavioral rule**: when AI suggests deferral ("先放着" / "out of scope" / "后面另开 task"), it MUST append to `$TASK_FILE`'s Deferred section — not just mention in chat.
+- **`finish-task` step 10 (new)**: handles Deferred items. If the section is non-empty, asks user how to persist them — 4 choices: (a) create GitHub issues via gh + link to PR; (b) append to project `TODO.md`; (c) append to `~/memo.md` via `take-note`; (d) leave in PR body only. For Mode B tasks, warns that (d) means the list dies with the worktree.
+
+### Changed
+
+- `finish-task` steps renumbered: retrospective is now step 11, cleanup reminder is step 12.
+
 ## [0.6.2] — 2026-04-23
 
 ### Fixed — `cleanup-task` UX: atomic cleanup + terse output + exit hint
