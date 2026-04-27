@@ -210,11 +210,8 @@ Content format (same as Mode B's `.task.md`):
 - [ ] ...
 
 ## Notes
-<!-- append progress, decisions, surprises here -->
-
-## Deferred
-<!-- 本 task 不做 / 过程中发现值得另开 task 跟进的事. 空的话 finish-task 会跳过. -->
-<!-- 格式: - <one-line description> (reason / estimate) -->
+<!-- append progress, decisions, surprises here. -->
+<!-- Spawned issues (deferred work) also recorded here as they're created. -->
 ```
 
 ### A.4. Report
@@ -353,17 +350,46 @@ Internally, the skill should:
 | Dirty working tree in Mode B | Ask "proceed anyway? (worktree forks from origin, not your dirty state)" |
 | No base branch detectable | Ask user for base branch name |
 
-## Behavioral rule — **必须同步记录 Deferred**
+## Behavioral rule — **Defer via GitHub issue (即刻创建, 不进 .task.md)**
 
-干活过程中, 凡是你（AI）建议"先放着 / 后面另开 task 改 / out of scope", 不能只在对话里说——**必须 append 到 `$TASK_FILE` 的 Deferred 节**. Append 格式:
+干活过程中, 凡是你 (AI) 想说 "先放着 / 后面另开 task 改 / out of scope", **不能只在对话里 mention**, 也**不要再写进 .task.md** (旧的 Deferred 节已废弃, 只会丢).
+
+正确做法: **当场提议创建 GitHub issue 跟踪**, 用户 yes 就建.
 
 ```
-- <item> (<reason / estimate>)
+> 建议 defer: <一句话>. 创建 issue 跟踪? (y/n)
 ```
 
-例子:
-- 在 finish-task 时, Deferred 节非空 → skill 会问用户怎么处理 (建 GitHub issue / TODO.md / memo / leave).
-- 如果 Deferred 只在 chat 里, finish-task 看不到, `/exit` 后用户会忘.
+User 选 `y` → 用 `finish-task` 同款的 GH_TOKEN-inline 路由 (从 remote URL 推 SSH alias → 查 `~/.claude/gh-accounts.yml` → `gh auth token -u <user>`):
+
+```bash
+GH_TOKEN="$TOKEN" gh issue create \
+  --title "<one-line>" \
+  --body "$(cat <<EOF
+**Deferred from**: task \`<slug>\` (branch \`<branch>\`)
+**Original PR**: <pr-url-if-exists, else "task in progress">
+
+<full context: why deferred, what the issue actually is>
+
+(auto-created by claude-harness-pack start-task workflow)
+EOF
+)" \
+  --label "deferred"
+```
+
+把 issue URL 给用户. **同时 append 一行到 `$TASK_FILE` 的 Notes 节**:
+
+```
+- Spawned issue: <issue-url> — <one-line>
+```
+
+这样 finish-task 时 PR body (来自 .task.md 全文) 自然包含 issue 链接清单, reviewer 能跟到全部 follow-ups.
+
+User 选 `n` → 在对话里说一句, 不持久化, 不再提.
+
+**Edge cases**:
+- Repo 没启用 issues / `gh` 不可用 → fallback: 提醒用户手动开 issue, 在 `.task.md` Notes 记一句"未跟踪"即可
+- 不在 git repo (Mode A 之外的杂活) → 同上, fallback 到提醒
 
 ## Do NOT
 

@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.9.0] — 2026-04-27
+
+### Changed — deferred work goes to GitHub issues, not `.task.md`
+
+The `## Deferred` section has been **removed** from the task-file template. Instead:
+
+- **`start-task` behavioral rule** now says: when AI suggests deferring something ("先放着 / out of scope / 后面另开 task"), AI **MUST propose creating a GitHub issue at that moment**. On user `y`, the skill creates the issue (using the same `GH_TOKEN`-inline routing as `finish-task`, with `deferred` label) and appends the issue URL to `.task.md`'s Notes section.
+- **`finish-task` step 10 (Handle Deferred items) removed**. It used to read the Deferred section and offer 4 paths (issues / TODO.md / memo / leave); now there's nothing to handle because deferrals are already issues. Steps renumbered: retrospective → step 10, cleanup reminder → step 11.
+
+### Why
+
+- `.task.md`'s Deferred list was lossy: Mode B's task file dies with the worktree on `cleanup-task`, so unprocessed deferrals were lost.
+- Batching at finish-task added a step that could be skipped or misread.
+- GitHub issues are the right tracker — designed for follow-up work, queryable, label-able, link-able to the PR. Going there directly removes the middleman.
+
+### Migration note for existing tasks
+
+Tasks created before v0.9.0 may have `## Deferred` sections in their `.task.md` files. `finish-task` no longer processes them automatically — handle them manually (create issues, or accept they ship inside the PR body and forget). New tasks won't have the section at all.
+
 ## [0.8.0] — 2026-04-27
 
 ### Added — `start-task` Mode B auto-spawns a new Claude Code session
