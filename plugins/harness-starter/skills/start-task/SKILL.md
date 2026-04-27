@@ -259,27 +259,72 @@ Target: `$WORKTREE_PATH/.task.md`.
 Write(file_path="<absolute: $WORKTREE_PATH/.task.md>", content=<task file markdown with **Mode**: B>)
 ```
 
-### B.4. Report
+### B.4. Auto-spawn new Claude Code session (并排 / 新 tab)
 
-- **Mode**: B (worktree)
-- **Worktree path**: `$WORKTREE_PATH`
-- **Branch**: `<type>/<slug>` (forked from `origin/<base>@<short-SHA>`)
-- **Task file**: `$WORKTREE_PATH/.task.md`
+避免"exit + cd + claude"手动三步骤。检测当前 terminal 环境, 自动起一个新 Claude Code session, cwd = worktree。当前 session **不退出**, 留作主 repo 操作或并行干别的。
 
-> 🔄 **下一步: 在 worktree 里开新 Claude Code session (强烈推荐)**
+```bash
+SPAWNED=""
+
+if [ -n "$TMUX" ]; then
+  # tmux: 横向 split 一个新 pane, cwd = worktree, 直接起 claude
+  tmux split-window -h -c "$WORKTREE_PATH" 'claude'
+  SPAWNED="tmux pane (在当前 window 右侧)"
+
+elif [ "$TERM_PROGRAM" = "iTerm.app" ]; then
+  osascript <<APPLESCRIPT
+tell application "iTerm"
+  tell current window
+    create tab with default profile
+    tell current session of current tab to write text "cd '$WORKTREE_PATH' && claude"
+  end tell
+end tell
+APPLESCRIPT
+  SPAWNED="iTerm 新 tab"
+
+elif [ "$TERM_PROGRAM" = "Apple_Terminal" ]; then
+  osascript -e "tell application \"Terminal\" to do script \"cd '$WORKTREE_PATH' && claude\""
+  SPAWNED="Terminal.app 新 window"
+
+elif [ -n "$ZELLIJ" ]; then
+  zellij action new-pane -c -- claude
+  # zellij 的 new-pane 默认继承当前 cwd, 需要 cd 进去再启动:
+  zellij action write-chars "cd '$WORKTREE_PATH' && claude"
+  zellij action write 13   # 13 = enter
+  SPAWNED="zellij pane"
+fi
+```
+
+If `$SPAWNED` is empty → unsupported terminal; fall back to manual instructions in B.5 report.
+
+### B.5. Report
+
+**If auto-spawn 成功**:
+
+> ✅ Mode B worktree 建好 + 已在 **$SPAWNED** 起了 Claude Code (cwd = `$WORKTREE_PATH`).
 >
-> 当前 session 的 cwd 心智模型还停留在 `$REPO_ROOT`; Bash 虽然 cd 到 worktree 了, 但 Read/Write/Edit 和 subagents 还按老 cwd 解析路径. 在新 session 里打开 worktree 目录, 一切自动归位.
+> 接下来:
+> 1. 切到新 pane/tab — 那里有个新的 Claude 在等着
+> 2. 跟它说 **"继续这个任务"** / **"resume"** — 它会读 `.task.md` 自动接上下文 (plan + done criteria 都已准备好)
+> 3. 本 session **保留**: 可以 `/exit` 关掉, 或留着并行做主 repo 上的别的事 (Mode B 真正的价值)
 >
+> 任务文件: `$WORKTREE_PATH/.task.md` (绝对路径; 新 pane 里 Claude 自动能看到)
+
+**If 未识别 terminal (`$SPAWNED` 为空)**:
+
+> ⚠️ Mode B worktree 建好了, 但当前 terminal 没识别 ($TERM_PROGRAM 未匹配, 也不在 tmux/zellij 里), 不能自动开新 session.
+>
+> 手动:
 > ```bash
-> # 1. 退出当前 session  (Ctrl+D, 或 /exit)
-> # 2. 切到 worktree
+> # 1. 退出当前 session (Ctrl+D 或 /exit)
+> # 2. cd 到 worktree
 > cd "$WORKTREE_PATH"
-> # 3. 启动新 Claude Code session
+> # 3. 启动新 Claude Code
 > claude
-> # 4. 新 session 里说 "继续这个任务" / "resume" — Claude 会读 .task.md 自动接上下文
+> # 4. 新 session 里说 "继续这个任务"
 > ```
 >
-> ⚠️ **不推荐**留在当前 session 继续干活: cwd 心智错位, 容易出现 "Bash 跑对了但 Write 落错目录" 这类诡异问题. 如果确实要留 (比如任务很小), 记得**所有 Read/Write/Edit 都传绝对路径** `$WORKTREE_PATH/...`.
+> ⚠️ 如果坚持留在当前 session 干活: 所有 Read/Write/Edit 必须用绝对路径 `$WORKTREE_PATH/...` (Bash cd 不影响这些工具的 cwd).
 
 ---
 

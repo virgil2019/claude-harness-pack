@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.8.0] — 2026-04-27
+
+### Added — `start-task` Mode B auto-spawns a new Claude Code session
+
+Mode B no longer leaves the user with manual "exit / cd / claude" steps. After creating the worktree, the skill **detects the terminal environment and spawns a new Claude Code session in a fresh pane / tab** with `cwd = $WORKTREE_PATH`:
+
+- **tmux** (when `$TMUX` is set) — `tmux split-window -h -c "$WORKTREE_PATH" 'claude'` (new pane next to the current one, recommended; preserves the current session for parallel work in the primary tree)
+- **iTerm2** (`$TERM_PROGRAM = iTerm.app`) — AppleScript creates a new tab and runs `cd && claude`
+- **Apple Terminal** (`$TERM_PROGRAM = Apple_Terminal`) — AppleScript opens a new window with `cd && claude`
+- **Zellij** (`$ZELLIJ` is set) — `zellij action` spawns a new pane
+- **Fallback** — unrecognized terminal: print the manual `exit / cd / claude` steps as before
+
+In the spawned session, the user just says **"继续这个任务" / "resume"** and Claude reads `.task.md` to pick up the context. The original session stays intact, embracing Mode B's parallel-work value (one pane on the primary repo, another on the worktree).
+
+### Changed
+
+- `.gitignore`: ignore `.omc/` (oh-my-claudecode plugin's local cache) so it doesn't accidentally get committed.
+
 ## [0.7.0] — 2026-04-24
 
 ### Added
