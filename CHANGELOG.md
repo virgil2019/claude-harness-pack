@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.10.0] — 2026-07-13
+
+### Changed — `start-task` Mode B switches the current session in via `EnterWorktree` (single session)
+
+Mode B no longer spawns a **second** Claude Code session. v0.8.0 detected the terminal (tmux / iTerm2 / Terminal.app / Zellij) and launched a fresh `claude` in a new pane/tab with `cwd = worktree`, leaving the user to switch panes and say "resume". That was easy to forget and awkward to juggle.
+
+Now Mode B uses the harness-native `EnterWorktree` tool to switch the **current** session into the worktree:
+
+- `start-task` still creates the worktree itself with `git worktree add … -b <type>/<slug> origin/<base>`, preserving the clean `<type>/<slug>` branch name and the `.worktrees/<slug>/` location.
+- It then calls `EnterWorktree(path=<worktree>)` — the **whole session** (Read / Write / Edit / Bash) moves into the worktree. No `cd`, no second session, and the **CWD trap is gone** (nothing is split between Bash and the file tools).
+- After `finish-task`, `ExitWorktree(keep)` returns the session to the main directory; `cleanup-task` after merge is unchanged.
+- Parallelism is now "open another terminal and `/start-task` there", not "one session driving two worktrees".
+
+### Why not `EnterWorktree(name=...)`
+
+`EnterWorktree(name="feat/x")` creates its own worktree under `.claude/worktrees/` on a branch named `worktree-feat+x` — it flattens `/` to `+` and force-prefixes `worktree-`, breaking the `<type>/<slug>` convention `finish-task` (PR title / commit) and `cleanup-task` depend on. So `start-task` keeps `git worktree add` for the branch and uses `EnterWorktree(path=...)` only to switch in.
+
+### Docs / other skills
+
+- `finish-task` step 11 notes the `ExitWorktree(keep)` option for the single-session flow.
+- `cleanup-task` notes: if still in the session that entered via `EnterWorktree`, run `ExitWorktree(keep)` before removing the worktree (don't delete the dir the session lives in). Its raw-git cleanup path is otherwise unchanged (cleanup usually runs in a fresh post-merge session).
+- Fallback path retained: if `EnterWorktree` is unavailable (older Claude Code), Mode B falls back to `cd` + absolute-path guidance.
+
 ## [0.9.0] — 2026-04-27
 
 ### Changed — deferred work goes to GitHub issues, not `.task.md`
