@@ -26,6 +26,8 @@ WORKTREE_PATH=$(pwd)
 MAIN_REPO=$(git worktree list | head -1 | awk '{print $1}')
 ```
 
+> **If this session entered the worktree via `EnterWorktree` (single-session Mode B)**: call `ExitWorktree(keep)` **first** to return the session to the main directory, then clean up from there (invocation B). Don't `git worktree remove` a worktree the session is still living in — the harness's worktree-session state would be left dangling and Bash's cwd would point at a deleted directory. (Cleanup usually runs in a *fresh* session after merge, where this doesn't arise.)
+
 **B. From main repo (or elsewhere)**:
 - Ask user: "Which branch/worktree to clean up?" — offer a list from `git worktree list` (skip main)
 - Determine `BRANCH` and `WORKTREE_PATH` from user's pick
