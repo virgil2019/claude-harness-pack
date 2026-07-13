@@ -192,6 +192,8 @@ Just remind the user:
 
 > "PR 开完了。Merge 之后跑 `cleanup-task` skill 清理本地 worktree + 分支（会先查 PR 状态再删，安全）。或者手动: `cd <main-repo> && git worktree remove .worktrees/<slug> && git branch -d <branch> && git fetch --prune origin`."
 
+> **Single-session (Mode B via EnterWorktree)**: if this session entered the worktree via `EnterWorktree`, you can `ExitWorktree(keep)` now to pop back to the main directory and keep working on control-plane things while the PR is in review — the worktree stays on disk. Note `ExitWorktree(remove)` won't remove a `path`-entered worktree anyway (the tool is non-destructive for those); removal is always `cleanup-task`'s job (raw `git worktree remove`, after merge).
+
 ## Error handling
 
 | Issue | Response |

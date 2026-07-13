@@ -1,6 +1,6 @@
 ---
 name: start-task
-description: Bootstraps a coding task. Offers two modes — (A) in-place: use current directory + current or newly-checked-out branch, write `.tasks/<slug>.md` for persistence; (B) worktree: create `.worktrees/<slug>/` on a new branch. Asks the user to pick mode. Invoke when the user says "开始任务", "新任务", "start a task", or when starting any non-trivial code change that should go through a PR. If the current dir is not a git repo or has no origin remote, delegates to init-repo first. **Task type (feat / fix / refactor / ...) is a classification, not a signal that a new repo is needed — pre-flight MUST run the actual git commands and base the delegate-or-not decision on their output, not on task description.**
+description: Bootstraps a coding task. Offers two modes — (A) in-place: use current directory + current or newly-checked-out branch, write `.tasks/<slug>.md` for persistence; (B) worktree: create `.worktrees/<slug>/` on a new branch and switch the CURRENT session into it via EnterWorktree (no second session, no manual cd). Asks the user to pick mode. Invoke when the user says "开始任务", "新任务", "start a task", or when starting any non-trivial code change that should go through a PR. If the current dir is not a git repo or has no origin remote, delegates to init-repo first. **Task type (feat / fix / refactor / ...) is a classification, not a signal that a new repo is needed — pre-flight MUST run the actual git commands and base the delegate-or-not decision on their output, not on task description.**
 ---
 
 # start-task
@@ -63,7 +63,7 @@ If `GIT_DIR != GIT_COMMON_DIR` → currently inside a linked worktree. Ask the u
 >
 > 选:
 > A. **继续当前任务** — 不跑 start-task, 直接说 "继续 / resume", Claude 会读 `.task.md` 恢复上下文.
-> B. **开新任务** — 先 `cd <PRIMARY_ROOT>` (再起新 session 更干净), 然后在 primary tree 里再 `/start-task`.
+> B. **开新任务** — 先 `ExitWorktree(keep)` 回主目录 (若当前 session 是靠 EnterWorktree 进来的), 或另开一个 terminal 从主目录起新 session, 然后在 primary tree 里再 `/start-task`.
 > C. **无视, 嵌套建新 worktree** (不推荐).
 
 Abort by default on unclear answer. Do not guess — explicitly wait.
@@ -97,7 +97,7 @@ Ask the user (one message):
 >
 > **A. 就地模式** — 留在当前目录 `<cwd>` (分支 `<current-branch>`), 只把 plan 和 done criteria 写到 `<repo>/.tasks/<slug>.md` (持久化, 跨任务可回看). 不建 worktree, 不 cd.
 >
-> **B. 新 worktree 模式** — 建 `<repo>/.worktrees/<slug>/`, 新分支 `<type>/<slug>` (从 `origin/<base>` 分叉), cd 进去. 适合并行多任务或 main 保持干净.
+> **B. 新 worktree 模式** — 建 `<repo>/.worktrees/<slug>/`, 新分支 `<type>/<slug>` (从 `origin/<base>` 分叉), 然后用 `EnterWorktree` 把**当前 session** 切进去. 你不用 cd、不用开新 tab、不用记着切目录; 改动全落在 worktree, 主目录 `main` 保持干净. 完事 `finish-task` 后可 `ExitWorktree(keep)` 回主目录. 适合 main 保持干净 / 需要隔离. (并行多任务 → 多开 terminal 各自 start-task, 不是一个 session 塞两个.)
 
 Wait for the user's answer (A or B). Do not guess.
 
@@ -237,7 +237,7 @@ if ! grep -qxF ".worktrees/" "$GITIGNORE" 2>/dev/null; then
 fi
 ```
 
-### B.2. Create the worktree
+### B.2. Create the worktree (clean `<type>/<slug>` branch)
 
 ```bash
 git fetch origin "$BASE_BRANCH"
@@ -245,99 +245,61 @@ mkdir -p "$REPO_ROOT/.worktrees"
 WORKTREE_PATH="$REPO_ROOT/.worktrees/<slug>"
 # if collision, append -2, -3, ...
 git worktree add "$WORKTREE_PATH" -b "<type>/<slug>" "origin/$BASE_BRANCH"
-cd "$WORKTREE_PATH"
 ```
 
-### B.3. Write `.task.md` via `Write` tool, **absolute path**
+> **Why raw `git worktree add` and not `EnterWorktree(name=...)`?** `EnterWorktree(name="feat/x")` creates its *own* worktree under `.claude/worktrees/` on a branch named `worktree-feat+x` — it flattens `/` to `+` and force-prefixes `worktree-`, which breaks the `<type>/<slug>` convention that `finish-task` (PR title / commit) and `cleanup-task` rely on. Creating the worktree ourselves keeps the clean branch name **and** the `.worktrees/<slug>/` location, then we switch into it by `path` in B.3. Do **not** `cd` here — the switch happens via the tool in B.3.
 
-Target: `$WORKTREE_PATH/.task.md`.
+### B.3. Switch the **current** session into the worktree — `EnterWorktree(path=...)`
+
+Call the **EnterWorktree** tool with the `path` of the worktree just created (absolute):
+
+```
+EnterWorktree(path="<absolute: $WORKTREE_PATH>")
+```
+
+This switches the **current** session's working directory into the worktree — `Read` / `Write` / `Edit` / `Bash` all now resolve there. No second session, no new tab/pane, no manual `cd`, and **no CWD trap** (the whole session moves, not just Bash's subshell cwd).
+
+- Use `path=` (enter the worktree we made), **never** `name=` (see B.2's note on why `name=` mangles the branch).
+- If `EnterWorktree` is unavailable in this harness (older Claude Code without the tool): fall back to the manual path in B.5.
+
+### B.4. Write `.task.md` via `Write` tool, **absolute path**
+
+Target: `$WORKTREE_PATH/.task.md`. The session is now inside the worktree, but still pass the **absolute** path (house rule — never rely on relative resolution).
 
 ```
 Write(file_path="<absolute: $WORKTREE_PATH/.task.md>", content=<task file markdown with **Mode**: B>)
 ```
 
-### B.4. Auto-spawn new Claude Code session (并排 / 新 tab)
-
-避免"exit + cd + claude"手动三步骤。检测当前 terminal 环境, 自动起一个新 Claude Code session, cwd = worktree。当前 session **不退出**, 留作主 repo 操作或并行干别的。
-
-```bash
-SPAWNED=""
-
-if [ -n "$TMUX" ]; then
-  # tmux: 横向 split 一个新 pane, cwd = worktree, 直接起 claude
-  tmux split-window -h -c "$WORKTREE_PATH" 'claude'
-  SPAWNED="tmux pane (在当前 window 右侧)"
-
-elif [ "$TERM_PROGRAM" = "iTerm.app" ]; then
-  osascript <<APPLESCRIPT
-tell application "iTerm"
-  tell current window
-    create tab with default profile
-    tell current session of current tab to write text "cd '$WORKTREE_PATH' && claude"
-  end tell
-end tell
-APPLESCRIPT
-  SPAWNED="iTerm 新 tab"
-
-elif [ "$TERM_PROGRAM" = "Apple_Terminal" ]; then
-  osascript -e "tell application \"Terminal\" to do script \"cd '$WORKTREE_PATH' && claude\""
-  SPAWNED="Terminal.app 新 window"
-
-elif [ -n "$ZELLIJ" ]; then
-  zellij action new-pane -c -- claude
-  # zellij 的 new-pane 默认继承当前 cwd, 需要 cd 进去再启动:
-  zellij action write-chars "cd '$WORKTREE_PATH' && claude"
-  zellij action write 13   # 13 = enter
-  SPAWNED="zellij pane"
-fi
-```
-
-If `$SPAWNED` is empty → unsupported terminal; fall back to manual instructions in B.5 report.
-
 ### B.5. Report
 
-**If auto-spawn 成功**:
+**Normal (EnterWorktree succeeded)**:
 
-> ✅ Mode B worktree 建好 + 已在 **$SPAWNED** 起了 Claude Code (cwd = `$WORKTREE_PATH`).
+> ✅ Mode B: worktree `.worktrees/<slug>/` 建好 (分支 `<type>/<slug>`, 从 `origin/<base>` 分叉), **当前 session 已切进去**.
 >
-> 接下来:
-> 1. 切到新 pane/tab — 那里有个新的 Claude 在等着
-> 2. 跟它说 **"继续这个任务"** / **"resume"** — 它会读 `.task.md` 自动接上下文 (plan + done criteria 都已准备好)
-> 3. 本 session **保留**: 可以 `/exit` 关掉, 或留着并行做主 repo 上的别的事 (Mode B 真正的价值)
->
-> 任务文件: `$WORKTREE_PATH/.task.md` (绝对路径; 新 pane 里 Claude 自动能看到)
+> - 直接开始改代码 — 所有编辑都落在 worktree 里, 主目录的 `main` 保持干净, 你不用 cd / 不用开新 tab / 不用记着切目录
+> - 任务文件: `$WORKTREE_PATH/.task.md`
+> - 完成 → `/finish-task` 开 PR; 想中途回主目录 → `ExitWorktree(keep)`; PR merge 后 → `/cleanup-task`
+> - 想**并行**做别的任务 → 另开一个 terminal, 各自 `/start-task`, 各自 EnterWorktree, 互不干扰 (单 session 模型下并行 = 多开 terminal, 不是一个 session 里塞两个 worktree)
 
-**If 未识别 terminal (`$SPAWNED` 为空)**:
+**Fallback (`EnterWorktree` 工具不可用)**:
 
-> ⚠️ Mode B worktree 建好了, 但当前 terminal 没识别 ($TERM_PROGRAM 未匹配, 也不在 tmux/zellij 里), 不能自动开新 session.
+> ⚠️ 当前 harness 没有 `EnterWorktree` 工具 (旧版 Claude Code), 不能把当前 session 切进 worktree.
 >
 > 手动:
 > ```bash
-> # 1. 退出当前 session (Ctrl+D 或 /exit)
-> # 2. cd 到 worktree
-> cd "$WORKTREE_PATH"
-> # 3. 启动新 Claude Code
-> claude
-> # 4. 新 session 里说 "继续这个任务"
+> cd "$WORKTREE_PATH"   # 只切了 Bash 的 cwd
 > ```
->
-> ⚠️ 如果坚持留在当前 session 干活: 所有 Read/Write/Edit 必须用绝对路径 `$WORKTREE_PATH/...` (Bash cd 不影响这些工具的 cwd).
+> ⚠️ 之后所有 Read/Write/Edit 必须用绝对路径 `$WORKTREE_PATH/...` — `cd` 不影响这三个工具的 cwd (CWD trap). 或者退出后 `cd "$WORKTREE_PATH" && claude` 起个新 session 更省心.
 
 ---
 
-## ⚠️ CWD trap — read this before doing anything after start-task
+## CWD note — mostly moot now (Mode B uses EnterWorktree)
 
-`cd` only affects the **Bash tool**'s cwd. It does **NOT** affect `Read` / `Write` / `Edit` — those tools resolve paths against the **session's starting cwd**, not the Bash subshell's cwd.
+- **Mode B**: `EnterWorktree(path=...)` moves the **whole session** into the worktree — `Read` / `Write` / `Edit` / `Bash` all resolve there together. The classic CWD trap (`cd` moving only Bash while file tools stay at the session's starting cwd) **does not apply** — there is no `cd`, and nothing is split.
+- **Mode B fallback** (no `EnterWorktree`, plain `cd`): the trap is back — `cd` moves only Bash; `Read`/`Write`/`Edit` still resolve against the session's starting cwd. Use absolute paths.
+- **Mode A**: session stays where it started; no split, no trap.
 
-Therefore, after start-task:
-
-- ✅ **Use absolute paths** with Read / Write / Edit (`"/full/path/.task.md"`).
-- ❌ Don't use `./.task.md` or `../foo`; they won't point where you expect.
-- ✅ Bash commands (`git status`, `ls`, etc.) are OK — Bash retains the new cwd.
-
-Internally, the skill should:
-- Compute `REPO_ROOT` and `WORKTREE_PATH` once, early.
-- Pass the absolute versions to every file operation afterwards.
+House rule regardless of mode: compute `REPO_ROOT` / `WORKTREE_PATH` once, early, and pass **absolute paths** to every `Read` / `Write` / `Edit`. Never `./.task.md` or `../foo`.
 
 ## Error handling
 
